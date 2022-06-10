@@ -45,12 +45,19 @@ robot.loadViewerModel("pinocchio")
 robot.display(q)
 
 #print(model.getFrameId("FR_foot_fixed")) # print the foot index index
-IDX_TOOL = model.getFrameId("FR_foot_fixed") # Get the frame of the FR foot (and its basis)
-IDX_BASIS = model.getFrameId("FR_foot_fixed") - 1
+
+FEET_IDX = []
+
+FEET_IDX.append(model.getFrameId("FR_foot_fixed")) # Get the frame of the FR foot (and its basis)
+FEET_IDX.append(model.getFrameId("FL_foot_fixed"))# Get the frame of the FR foot (and its basis)
+FEET_IDX.append(model.getFrameId("RR_foot_fixed"))# Get the frame of the FR foot (and its basis)
+FEET_IDX.append(model.getFrameId("RL_foot_fixed")) # Get the frame of the FR foot (and its basis)
+
+# IDX_BASIS = model.getFrameId("FR_foot_fixed") - 1
  
 pin.framesForwardKinematics(model, data, q)
-Mtool = data.oMf[IDX_TOOL]
-Mbasis = data.oMf[IDX_BASIS]
+# Mtool = data.oMf[IDX_TOOL]
+# Mbasis = data.oMf[IDX_BASIS]
 
 def place(name, M):
     robot.viewer.gui.applyConfiguration(name, pin.SE3ToXYZQUAT(M).tolist())
@@ -72,12 +79,12 @@ def generateTrajectory(centre,length):
     # plt.show()
     return x,y
 
-def positionError(q,qprev,Mgoal,robot):
+def positionError(q,qprev,Mgoal,robot,FOOT_IDX):
     #des = pin.log(Mgoal).vector
     des = Mgoal.translation
     pin.forwardKinematics(robot.model, robot.data, q)  # Compute joint placements
     pin.updateFramePlacements(robot.model, robot.data)      # Also compute operational frame placements
-    Mtool = robot.data.oMf[IDX_TOOL]  # Get placement from world frame o to frame f oMf
+    Mtool = robot.data.oMf[FOOT_IDX]  # Get placement from world frame o to frame f oMf
     cur = Mtool.translation
     #err = pin.log(Mtool.inverse() * Mgoal).vector # This is one way of computing an error in SO3
     err = np.linalg.norm(des-cur) # Calculate norm of end-effector position error
@@ -132,7 +139,7 @@ def constraintFun_up(q,q1,qprev):
 
     return ineq_up
 
-def fbgs_opt(q,robot,Mgoal):
+def fbgs_opt(q,robot,Mgoal,FOOT_IDX):
     try:  # This is needed for the first iteration (when there is no qprev)
         qprev
     except:
@@ -156,7 +163,7 @@ def fbgs_opt(q,robot,Mgoal):
         "args" : (q,qprev)
     }
 #  
-    xopt_bfgs = minimize(positionError,q,args = (qprev,Mgoal,robot),method='SLSQP',constraints=[ineq_lo,ineq_up,ineq_vel])
+    xopt_bfgs = minimize(positionError,q,args = (qprev,Mgoal,robot,FOOT_IDX),method='SLSQP',constraints=[ineq_lo,ineq_up,ineq_vel])
     qprev = q
 
     return xopt_bfgs
@@ -164,11 +171,17 @@ def fbgs_opt(q,robot,Mgoal):
 
 # Define the end-effector goal position 
 origin = pin.SE3(np.eye(3), np.matrix([0, 0, 0]).T)  # Display the origin coordinate axes
-Mgoal = pin.SE3(np.eye(3), np.matrix([0.2, -0.12, -0.2]).T) # Display the desired goal axis
-robot.viewer.gui.addXYZaxis('world/framegoal', [3., 3.,1., 3.], 0.015, 2) # colour, size, length of axis
+Mgoal = []
+Mgoal.append(pin.SE3(np.eye(3), np.matrix([0.2, -0.12, -0.2]).T)) # Display the desired goal axis
+Mgoal.append(pin.SE3(np.eye(3), np.matrix([0.2, +0.12, -0.2]).T)) # Display the desired goal axis
+
+robot.viewer.gui.addXYZaxis('world/framegoal1', [3., 3.,1., 3.], 0.015, 2) # colour, size, length of axis
+robot.viewer.gui.addXYZaxis('world/framegoal2', [3., 3.,1., 3.], 0.015, 2) # colour, size, length of axis
+
 robot.viewer.gui.addXYZaxis('world/origin', [0., 0., 0., 0.], 0.015, 4)
 robot.viewer.gui.refresh()
-place('world/framegoal', Mgoal)
+place('world/framegoal1', Mgoal[0])
+place('world/framegoal2', Mgoal[1])
 place('world/origin',origin)
 
 
@@ -178,16 +191,22 @@ dt = 0.005
 centre = np.array([0.2,-0.35])
 x,y = generateTrajectory(centre,T/dt)
 #x = np.linspace(0.1,0.3,100)
-robot.viewer.gui.removeLightSources = False
+robot.viewer.gui.removeLightSources = True
 
 qStore = []
 q = pin.neutral(model)
+q_full = q
+
 # video_dir = "/home/vassil/TU_Delft/Internship/catkin_ws/src/pinocchio_test/video_IK/frame"
 # robot.viewer.gui.startCapture('python-pinocchio',video_dir,"jpg") # 1st arg is window name (can be seen in gepetto-gui)
 for iter in range(5):
     for i in range(int(T/dt)):
-        Mgoal = pin.SE3(np.eye(3), np.matrix([x[int(T/dt)-1-i], -0.12, y[int(T/dt)-1-i]]).T) # Desired goal
-        place('world/framegoal', Mgoal)
+        Mgoal = []
+        Mgoal.append(pin.SE3(np.eye(3), np.matrix([x[int(T/dt)-1-i], -0.12, y[int(T/dt)-1-i]]).T)) # Desired goal
+        Mgoal.append(pin.SE3(np.eye(3), np.matrix([x[int(T/dt)-1-i], +0.12, y[int(T/dt)-1-i]]).T)) # Desired goal
+        place('world/framegoal1', Mgoal[0])
+        place('world/framegoal2', Mgoal[1])
+
         # T = 30
         #for i in range(T):
             # pin.forwardKinematics(robot.model, robot.data, q)  # Compute joint placements
@@ -202,11 +221,15 @@ for iter in range(5):
             # #vq =  J.T.dot(solve(J.dot(J.T) + damp * np.eye(6), nu))
             # dt = 0.5
             # q = pin.integrate(robot.model, q, vq * dt)
-        q = fbgs_opt(q,robot,Mgoal)
-        q = q.x
-        print(q[3:6])
-        qStore.append(q)
-        robot.display(q)
+        for leg in range(2):
+            FOOT_IDX = FEET_IDX[leg] 
+            q = fbgs_opt(q,robot,Mgoal[leg],FOOT_IDX)
+            q = q.x
+            print(q[4*leg:4*leg+4])
+            qStore.append(q)
+            q_full[4*leg:4*leg+4] = q[4*leg:4*leg+4]
+
+        robot.display(q_full)
         time.sleep(0.0000001)
 # robot.viewer.gui.stopCapture('python-pinocchio')
 plt.plot(np.array(qStore))

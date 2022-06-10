@@ -1,0 +1,4 @@
+{
+    "cmake.configureOnOpen": false,
+    "editor.maxTokenizationLineLength": 200000000000
+}
